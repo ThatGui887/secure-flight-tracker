@@ -15,47 +15,66 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 
 interface Flight {
-  flight: {
-    iata: string;
-    icao: string;
-  };
-  departure: {
-    airport: string;
-    iata: string;
-    scheduled: string;
-  };
-  arrival: {
-    airport: string;
-    iata: string;
-    scheduled: string;
-  };
-  airline: {
-    name: string;
-  };
-  flight_status: string;
+  icao24: string;
+  callsign: string;
+  origin_country: string;
+  time_position: number;
+  last_contact: number;
+  longitude: number;
+  latitude: number;
+  baro_altitude: number;
+  on_ground: boolean;
+  velocity: number;
+  true_track: number;
+  vertical_rate: number;
+  sensors: number[];
+  geo_altitude: number;
+  squawk: string;
+  spi: boolean;
+  position_source: number;
 }
 
 const FlightTracker = () => {
-  const [fromLocation, setFromLocation] = useState("");
-  const [toLocation, setToLocation] = useState("");
+  const [searchArea, setSearchArea] = useState({
+    lamin: 45.8389,  // Default to North America bounds
+    lomin: -130.0,
+    lamax: 49.0,
+    lomax: -120.0
+  });
   const { toast } = useToast();
 
   const { data: flights, isLoading } = useQuery({
-    queryKey: ["flights", fromLocation, toLocation],
+    queryKey: ["flights", searchArea],
     queryFn: async () => {
       try {
         const response = await axios.get(
-          `http://api.aviationstack.com/v1/flights`,
+          `https://opensky-network.org/api/states/all`,
           {
             params: {
-              access_key: import.meta.env.VITE_AVIATION_API_KEY,
-              dep_iata: fromLocation,
-              arr_iata: toLocation,
-              limit: 10,
-            },
+              ...searchArea,
+              extended: 1
+            }
           }
         );
-        return response.data.data;
+        return response.data.states?.map((flight: any[]) => ({
+          icao24: flight[0],
+          callsign: flight[1]?.trim(),
+          origin_country: flight[2],
+          time_position: flight[3],
+          last_contact: flight[4],
+          longitude: flight[5],
+          latitude: flight[6],
+          baro_altitude: flight[7],
+          on_ground: flight[8],
+          velocity: flight[9],
+          true_track: flight[10],
+          vertical_rate: flight[11],
+          sensors: flight[12],
+          geo_altitude: flight[13],
+          squawk: flight[14],
+          spi: flight[15],
+          position_source: flight[16],
+        })) || [];
       } catch (error) {
         toast({
           title: "Error fetching flights",
@@ -65,41 +84,47 @@ const FlightTracker = () => {
         return [];
       }
     },
-    enabled: Boolean(fromLocation && toLocation),
+    refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">From (IATA code)</label>
+          <label className="text-sm font-medium">Min Latitude</label>
           <Input
-            placeholder="e.g. JFK, LAX"
-            value={fromLocation}
-            onChange={(e) => setFromLocation(e.target.value.toUpperCase())}
+            type="number"
+            value={searchArea.lamin}
+            onChange={(e) => setSearchArea(prev => ({...prev, lamin: parseFloat(e.target.value)}))}
             className="w-full"
-            maxLength={3}
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">To (IATA code)</label>
+          <label className="text-sm font-medium">Max Latitude</label>
           <Input
-            placeholder="e.g. LHR, CDG"
-            value={toLocation}
-            onChange={(e) => setToLocation(e.target.value.toUpperCase())}
+            type="number"
+            value={searchArea.lamax}
+            onChange={(e) => setSearchArea(prev => ({...prev, lamax: parseFloat(e.target.value)}))}
             className="w-full"
-            maxLength={3}
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Date</label>
-          <div className="relative">
-            <Input
-              type="date"
-              className="w-full"
-            />
-            <Calendar className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
-          </div>
+          <label className="text-sm font-medium">Min Longitude</label>
+          <Input
+            type="number"
+            value={searchArea.lomin}
+            onChange={(e) => setSearchArea(prev => ({...prev, lomin: parseFloat(e.target.value)}))}
+            className="w-full"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Max Longitude</label>
+          <Input
+            type="number"
+            value={searchArea.lomax}
+            onChange={(e) => setSearchArea(prev => ({...prev, lomax: parseFloat(e.target.value)}))}
+            className="w-full"
+          />
         </div>
       </div>
 
@@ -111,44 +136,28 @@ const FlightTracker = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Airline</TableHead>
-              <TableHead>Flight</TableHead>
-              <TableHead>Departure</TableHead>
-              <TableHead>Arrival</TableHead>
+              <TableHead>Call Sign</TableHead>
+              <TableHead>Country</TableHead>
+              <TableHead>Position</TableHead>
+              <TableHead>Altitude</TableHead>
+              <TableHead>Speed</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {flights?.map((flight: Flight) => (
-              <TableRow key={flight.flight.iata}>
-                <TableCell className="font-medium">{flight.airline.name}</TableCell>
-                <TableCell>{flight.flight.iata}</TableCell>
+              <TableRow key={flight.icao24}>
+                <TableCell className="font-medium">{flight.callsign || 'N/A'}</TableCell>
+                <TableCell>{flight.origin_country}</TableCell>
                 <TableCell>
                   <div className="space-y-1">
-                    <div>{flight.departure.airport}</div>
-                    <div className="text-sm text-gray-500">
-                      {new Date(flight.departure.scheduled).toLocaleTimeString()}
-                    </div>
+                    <div>Lat: {flight.latitude?.toFixed(4)}</div>
+                    <div>Long: {flight.longitude?.toFixed(4)}</div>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div>{flight.arrival.airport}</div>
-                    <div className="text-sm text-gray-500">
-                      {new Date(flight.arrival.scheduled).toLocaleTimeString()}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>{flight.flight_status}</TableCell>
-                <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                  >
-                    Track
-                  </Button>
-                </TableCell>
+                <TableCell>{flight.baro_altitude ? `${Math.round(flight.baro_altitude)}m` : 'N/A'}</TableCell>
+                <TableCell>{flight.velocity ? `${Math.round(flight.velocity * 3.6)}km/h` : 'N/A'}</TableCell>
+                <TableCell>{flight.on_ground ? 'On Ground' : 'In Air'}</TableCell>
               </TableRow>
             ))}
           </TableBody>
